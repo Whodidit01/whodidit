@@ -10,7 +10,7 @@ import { supabase } from "../lib/supabase";
 // ----- UI helpers -----
 type ButtonProps = {
   children: React.ReactNode;
-  onClick: () => void;
+  onClick?: () => void;                 // ⬅ make optional
   variant?: "primary" | "outline";
   disabled?: boolean;
 };
@@ -22,7 +22,7 @@ const Button = ({
   disabled = false,
 }: ButtonProps) => (
   <button
-    onClick={onClick}
+    onClick={onClick ?? (() => {})}      // ⬅ safe no-op fallback
     disabled={disabled}
     className={`px-4 py-2 rounded-2xl shadow ${
       variant === "outline"
@@ -33,6 +33,7 @@ const Button = ({
     {children}
   </button>
 );
+
 
 const Chip = ({ children, active }) => (
   <span className={`px-3 py-1 rounded-2xl text-sm mr-2 mb-2 inline-block ${active ? "bg-[#00D1B2] text-[#0D1117]" : "bg-white/10 text-white"}`}>{children}</span>
