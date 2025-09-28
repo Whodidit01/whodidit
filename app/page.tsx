@@ -3,6 +3,35 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../lib/supabase";
+async function upsertProvider({ name, zip, service }) {
+  const n = (name || "").trim();
+  const z = (zip || "").trim();
+  const s = (service || "").trim();
+  if (!n) throw new Error("Provider name is required");
+
+  // Try to find an existing provider by name+zip+service (case-insensitive)
+  const { data: existing, error: findErr } = await supabase
+    .from("providers")
+    .select("id")
+    .ilike("name", n)
+    .eq("zip", z || null)
+    .eq("service", s || null)
+    .limit(1)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
+  if (existing?.id) return existing.id;
+
+  // Create a new provider
+  const { data: inserted, error: insErr } = await supabase
+    .from("providers")
+    .insert({ name: n, zip: z || null, service: s || null })
+    .select("id")
+    .single();
+
+  if (insErr) throw insErr;
+  return inserted.id;
+}
 
 
 
@@ -207,19 +236,155 @@ const Profile = ({ stylist, onWrite }) => {
 };
 
 const ReviewForm = () => {
+  const [providerName, setProviderName] = useState("");
+  const [zip, setZip] = useState("");
+  const [svc, setSvc] = useState("");
+  const [pricing, setPricing] = useState(5);
+  const [serviceScore, setServiceScore] = useState(5);
+  const [cleanliness, setCleanliness] = useState(5);
   const [anonymous, setAnonymous] = useState(true);
-  const [photos, setPhotos] = useState([]);
-  const [video, setVideo] = useState(null);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [video, setVideo] = useState<File | null>(null);
   const [agree, setAgree] = useState(false);
-  const [rating, setRating] = useState(5);
+  const [body, setBody] = useState("");
+  const [msg, setMsg] = useState("");
 
-  const handlePhotos = (e) => {
+  const handlePhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []).slice(0, 4);
-    setPhotos(files);
+    setPhotos(files as File[]);
   };
-  const handleVideo = (e) => {
+  const handleVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
     setVideo((e.target.files || [])[0] || null);
   };
+
+  const handleSubmit = async () => {
+    setMsg("");
+    if (!agree) { setMsg("Please agree to the disclaimer."); return; }
+    if (!providerName.trim()) { setMsg("Please enter the service provider name."); return; }
+    if (!body.trim() || body.trim().length < 30) { setMsg("Please write at least 30 characters."); return; }
+
+    // NOTE: media upload to Supabase Storage can be added later.
+    // For now we’ll save ratings + text + linkage to provider.
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setMsg("Please log in first."); return; }
+
+      // 1) Get/create provider record
+      const providerId = await upsertProvider({ name: providerName, zip, service: svc });
+
+      // 2) Insert review
+      const { error: insErr } = await supabase.from("reviews").insert({
+        provider_id: providerId,
+        author_user: user.id,
+        pricing_score: pricing,
+        service_score: serviceScore,
+        cleanliness_score: cleanliness,
+        body,
+        anonymous
+      });
+
+      if (insErr) { setMsg("Error saving review: " + insErr.message); return; }
+
+      // Reset
+      setProviderName(""); setZip(""); setSvc("");
+      setPricing(5); setServiceScore(5); setCleanliness(5);
+      setAnonymous(true); setPhotos([]); setVideo(null); setAgree(false); setBody("");
+      setMsg("Review submitted! Thanks for helping the community.");
+    } catch (e: any) {
+      setMsg("Error: " + (e?.message || e));
+    }
+  };
+
+  return (
+    <Card>
+      <SectionTitle>Write a Review</SectionTitle>
+      <div className="grid md:grid-cols-2 gap-4">
+        <input
+          placeholder="Service Provider name"
+          value={providerName}
+          onChange={(e)=>setProviderName(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+        />
+        <input
+          placeholder="ZIP code"
+          value={zip}
+          onChange={(e)=>setZip(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+        />
+        <input
+          placeholder="Service (e.g., cut, makeup, lashes)"
+          value={svc}
+          onChange={(e)=>setSvc(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
+        />
+
+        {/* three category ratings */}
+        <div>
+          <label className="block text-white/80 mb-2">Pricing (1–5)</label>
+          <select value={pricing} onChange={(e)=>setPricing(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl bg-white/10 text-white">
+            {[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-white/80 mb-2">Service (1–5)</label>
+          <select value={serviceScore} onChange={(e)=>setServiceScore(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl bg-white/10 text-white">
+            {[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div className="md:col-span-2">
+          <label className="block text-white/80 mb-2">Cleanliness (1–5)</label>
+          <select value={cleanliness} onChange={(e)=>setCleanliness(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl bg-white/10 text-white">
+            {[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+
+        <textarea
+          placeholder="Your honest experience (min 30 chars)"
+          value={body}
+          onChange={(e)=>setBody(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
+          rows={4}
+        />
+
+        <div>
+          <label className="block text-white/80 mb-2">Upload photos (max 4)</label>
+          <input type="file" accept="image/*" multiple onChange={handlePhotos} className="text-white" />
+          <div className="text-white/60 text-sm mt-1">Selected: {photos.length}/4</div>
+        </div>
+        <div>
+          <label className="block text-white/80 mb-2">Upload video (max 1)</label>
+          <input type="file" accept="video/*" onChange={handleVideo} className="text-white" />
+          <div className="text-white/60 text-sm mt-1">{video ? (video.name || "Selected") : "None selected"}</div>
+        </div>
+
+        <div className="md:col-span-2 flex items-center gap-2">
+          <input id="anon" type="checkbox" checked={anonymous} onChange={()=>setAnonymous(!anonymous)} />
+          <label htmlFor="anon" className="text-white">Post anonymously</label>
+        </div>
+
+        <div className="md:col-span-2 text-white/80 text-sm bg:white/5 p-3 rounded-xl border border-white/10">
+          <strong>Disclaimer:</strong> I certify that my statements are true and based on my experience.
+          I understand that reviews are permanent and subject to moderation. Harassment or threats are prohibited.
+        </div>
+
+        <div className="md:col-span-2 flex items-center gap-2">
+          <input id="agree" type="checkbox" checked={agree} onChange={()=>setAgree(!agree)} />
+          <label htmlFor="agree" className="text-white">I agree to the terms above.</label>
+        </div>
+
+        <div className="md:col-span-2">
+          <Button onClick={handleSubmit} disabled={!agree}>Submit review</Button>
+        </div>
+
+        {msg && <div className="md:col-span-2 text-white/80">{msg}</div>}
+      </div>
+    </Card>
+  );
+};
+
 
   return (
     <Card>
@@ -359,10 +524,27 @@ const Account = () => {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [user, setUser] = useState(null);
+const [myReviews, setMyReviews] = useState<any[]>([]);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null));
-  }, []);
+  supabase.auth.getUser().then(async ({ data }) => {
+    const currentUser = data.user ?? null;
+    setUser(currentUser);
+
+    if (currentUser) {
+      const { data: reviews, error } = await supabase
+        .from("reviews")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: false });
+
+      if (!error) {
+        setMyReviews(reviews);
+      }
+    }
+  });
+}, []);
+
 
   const handleSignup = async () => {
     const { error } = await supabase.auth.signUp({ email, password });
@@ -379,10 +561,27 @@ const Account = () => {
     <Card>
       <SectionTitle>My Profile</SectionTitle>
       {user ? (
-        <>
-          <p className="text-white/80 mb-3">Signed in as {user.email}</p>
-          <Button variant="outline" onClick={handleLogout}>Log out</Button>
-        </>
+  <>
+    <p className="text-white/80 mb-3">Signed in as {user.email}</p>
+    <Button variant="outline" onClick={handleLogout}>Log out</Button>
+
+    <div className="mt-6">
+      <h3 className="text-lg font-semibold text-white mb-2">My Reviews</h3>
+      {myReviews.length === 0 && (
+        <p className="text-white/60 text-sm">You haven’t posted any reviews yet.</p>
+      )}
+      <ul className="space-y-4">
+        {myReviews.map((review) => (
+          <li key={review.id} className="bg-white/5 p-3 rounded-xl border border-white/10">
+            <p className="text-white font-medium">{review.provider_name}</p>
+            <p className="text-white/80 text-sm">{review.comment}</p>
+            <p className="text-white/60 text-xs">Posted on {new Date(review.created_at).toLocaleDateString()}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </>
+
       ) : (
         <>
           <div className="grid md:grid-cols-2 gap-3">
