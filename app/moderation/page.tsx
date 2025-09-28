@@ -15,11 +15,21 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 async function getMyProfile() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { user: null, profile: null };
-  const { data: profile } = await supabase
+  const { data: profile, error } = await supabase
     .from("profiles")
-    .select("id,email,role")
+    .select("id, role, is_admin")
     .eq("id", user.id)
     .single();
+  // If no row yet, create a default (optional safety)
+  if (!profile) {
+    await supabase.from("profiles").insert({ id: user.id }).select().single();
+    const { data: profile2 } = await supabase
+      .from("profiles")
+      .select("id, role, is_admin")
+      .eq("id", user.id)
+      .single();
+    return { user, profile: profile2 ?? null };
+  }
   return { user, profile };
 }
 
@@ -29,8 +39,8 @@ export default function ModerationRoute() {
   useEffect(() => {
     (async () => {
       const { profile } = await getMyProfile();
-      if (profile?.role === "admin") setStatus("ok");
-      else setStatus("denied");
+      const isAdmin = !!(profile?.is_admin || profile?.role === "admin");
+      setStatus(isAdmin ? "ok" : "denied");
     })();
   }, []);
 
@@ -61,7 +71,6 @@ export default function ModerationRoute() {
     );
   }
 
-  // ---- Your moderation UI ----
   return (
     <Shell>
       <Card>
@@ -80,21 +89,9 @@ export default function ModerationRoute() {
             <div className="text-3xl text-white font-semibold">5</div>
           </div>
         </div>
-
-        <div className="mt-4">
-          <div className="text-white font-medium mb-2">Flag Queue</div>
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="p-3 rounded-xl bg-white/5 border border-white/10">
-                <div className="text-white/90">Potential policy violation in Review #{100 + i}</div>
-                <div className="text-white/60 text-sm">
-                  Summary: Reviewer alleges missed appointment; suggests refund or redo.
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* ...your queue UI here... */}
       </Card>
     </Shell>
   );
 }
+
