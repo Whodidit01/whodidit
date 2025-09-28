@@ -8,7 +8,19 @@ import { supabase } from "../lib/supabase";
 
 
 // ----- UI helpers -----
-const Button = ({ children, onClick, variant = "primary", disabled }) => (
+type ButtonProps = {
+  children: React.ReactNode;
+  onClick: () => void;
+  variant?: "primary" | "outline";
+  disabled?: boolean;
+};
+
+const Button = ({
+  children,
+  onClick,
+  variant = "primary",
+  disabled = false,
+}: ButtonProps) => (
   <button
     onClick={onClick}
     disabled={disabled}
@@ -21,6 +33,7 @@ const Button = ({ children, onClick, variant = "primary", disabled }) => (
     {children}
   </button>
 );
+
 const Chip = ({ children, active }) => (
   <span className={`px-3 py-1 rounded-2xl text-sm mr-2 mb-2 inline-block ${active ? "bg-[#00D1B2] text-[#0D1117]" : "bg-white/10 text-white"}`}>{children}</span>
 );
