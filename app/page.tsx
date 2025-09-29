@@ -515,7 +515,7 @@ const ReviewForm = () => {
 const Resolve = () => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [selectedService, setSelectedService] = useState("Refund");
-  const priceFor = (opt: string) => (opt === "Civil suit steps" ? 19.99 : 4.99);
+  const priceFor = (opt: string) => (opt === "Civil suit steps" ? 10.00 : 4.99);
 
   return (
     <Card>
