@@ -515,7 +515,7 @@ const ReviewForm = () => {
 const Resolve = () => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [selectedService, setSelectedService] = useState("Refund");
-  const priceFor = (opt: string) => (opt === "Help filing civil suit" ? 19.99 : 4.99);
+  const priceFor = (opt: string) => (opt === "Civil suit steps" ? 19.99 : 4.99);
 
   return (
     <Card>
@@ -539,7 +539,7 @@ const Resolve = () => {
             <option>Refund</option>
             <option>Fix/Redo</option>
             <option>Report service provider</option>
-            <option>Help filing civil suit</option>
+            <option>Civil suit steps</option>
           </select>
           <div className="text-white/70 text-sm mt-2">Price: ${priceFor(selectedService).toFixed(2)}</div>
         </div>
