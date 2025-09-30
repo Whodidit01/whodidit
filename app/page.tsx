@@ -613,39 +613,102 @@ const Moderation = () => (
   </Card>
 );
 
-const Claim = ({ stylist }: { stylist: Stylist | null }) => (
-  <Card>
-    <SectionTitle>Claim your service provider profile</SectionTitle>
-    <p className="text-white/80 mb-4">
-      Profiles can be claimed by verified owners to respond, dispute, or resolve reviews. We’ll verify ownership via
-      email/phone and proof of business.
-    </p>
-    <div className="grid md:grid-cols-2 gap-3">
-      <input
-        placeholder="Business/Provider name"
-        defaultValue={stylist?.name || ""}
-        className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-      />
-      <input placeholder="Contact email" className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
-      <input placeholder="Phone (optional)" className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
-      <input
-        placeholder="ZIP code"
-        defaultValue={stylist?.zip || ""}
-        className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-      />
-      <input
-        placeholder="Website/Instagram (optional)"
-        className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
-      />
-    </div>
-    <div className="mt-4 flex gap-2">
-      <Button>Request verification</Button>
-      <Button variant="outline" onClick={() => alert("We will email you verification steps.")}>
-        What’s needed?
-      </Button>
-    </div>
-  </Card>
-);
+const Claim = ({ stylist }: { stylist: Stylist | null }) => {
+  const [bizEmail, setBizEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [website, setWebsite] = useState("");
+  const [name, setName] = useState(stylist?.name || "");
+  const [zip, setZip] = useState(stylist?.zip || "");
+  const [svc, setSvc] = useState(stylist?.service || "");
+  const [msg, setMsg] = useState("");
+
+  const submitClaim = async () => {
+    setMsg("");
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setMsg("Please log in first (My Profile tab), then come back to claim.");
+        return;
+      }
+      if (!name.trim()) { setMsg("Please enter the Business/Provider name."); return; }
+
+      // uses your upsertProvider helper already in this file
+      const providerId = await upsertProvider({ name, zip, service: svc });
+
+      const { error } = await supabase.from("provider_claims").insert({
+        provider_id: providerId,
+        claimant_user: user.id,
+        business_email: bizEmail || null,
+        phone: phone || null,
+        website: website || null,
+      });
+      if (error) throw error;
+
+      setMsg("Claim submitted! We’ll review and email you after a decision.");
+    } catch (e: any) {
+      setMsg(`Error: ${e?.message || e}`);
+    }
+  };
+
+  return (
+    <Card>
+      <SectionTitle>Claim your service provider profile</SectionTitle>
+      <p className="text-white/80 mb-4">
+        Profiles can be claimed by verified owners to respond, dispute, or resolve reviews.
+        We’ll verify ownership via email/phone and proof of business.
+      </p>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <input
+          placeholder="Business/Provider name"
+          value={name}
+          onChange={(e)=>setName(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+        />
+        <input
+          placeholder="ZIP code"
+          value={zip}
+          onChange={(e)=>setZip(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+        />
+        <input
+          placeholder="Service (hair, makeup, lashes)"
+          value={svc}
+          onChange={(e)=>setSvc(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
+        />
+
+        <input
+          placeholder="Contact email (for verification)"
+          value={bizEmail}
+          onChange={(e)=>setBizEmail(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
+        />
+        <input
+          placeholder="Phone (optional)"
+          value={phone}
+          onChange={(e)=>setPhone(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+        />
+        <input
+          placeholder="Website/Instagram (optional)"
+          value={website}
+          onChange={(e)=>setWebsite(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+        />
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <Button onClick={submitClaim}>Request verification</Button>
+        <Button variant="outline" onClick={() => alert('We will email you verification steps.')}>
+          What’s needed?
+        </Button>
+      </div>
+
+      {msg && <div className="mt-3 text-white/80">{msg}</div>}
+    </Card>
+  );
+};
 
 const Account = () => {
   const [email, setEmail] = useState("");
