@@ -884,6 +884,21 @@ export default function App() {
     window.addEventListener("go-claim", handler as EventListener);
     return () => window.removeEventListener("go-claim", handler as EventListener);
   }, []);
+// ↓ Add this NEW effect right under the go-claim effect
+useEffect(() => {
+  (async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!error && data?.is_admin) setIsAdmin(true);
+  })();
+}, []);
 
   return (
     <div className="min-h-screen bg-[#0D1117] text-white">
