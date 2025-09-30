@@ -580,38 +580,105 @@ const Resolve = () => {
   );
 };
 
-const Moderation = () => (
-  <Card>
-    <SectionTitle>Moderation Dashboard</SectionTitle>
-    <div className="grid md:grid-cols-3 gap-4">
-      <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-        <div className="text-white/70 text-sm">Automatic Flags (24h)</div>
-        <div className="text-3xl text-white font-semibold">7</div>
+const Moderation = () => {
+  const [claims, setClaims] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [note, setNote] = useState("");
+
+  const loadClaims = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("provider_claims")
+      .select(`
+        id,
+        created_at,
+        status,
+        business_email,
+        phone,
+        website,
+        claimant_user,
+        provider_id,
+        providers:provider_id ( id, name, zip, service, claimed, owner_user ),
+        users:claimant_user ( email )
+      `)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+    if (!error && Array.isArray(data)) setClaims(data);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadClaims(); }, []);
+
+  const approve = async (claimId: string, providerId: string, claimantUser: string) => {
+    setNote("Approving...");
+    // 1) set provider owner + claimed
+    const { error: pErr } = await supabase
+      .from("providers")
+      .update({ owner_user: claimantUser, claimed: true })
+      .eq("id", providerId);
+
+    if (pErr) { setNote("Error (provider update): " + pErr.message); return; }
+
+    // 2) mark claim approved
+    const { data: me } = await supabase.auth.getUser();
+    const { error: cErr } = await supabase
+      .from("provider_claims")
+      .update({ status: "approved", decided_at: new Date().toISOString(), decided_by: me?.user?.id ?? null })
+      .eq("id", claimId);
+
+    if (cErr) { setNote("Error (claim update): " + cErr.message); return; }
+
+    setNote("Approved.");
+    await loadClaims();
+  };
+
+  const reject = async (claimId: string) => {
+    setNote("Rejecting...");
+    const { data: me } = await supabase.auth.getUser();
+    const { error } = await supabase
+      .from("provider_claims")
+      .update({ status: "rejected", decided_at: new Date().toISOString(), decided_by: me?.user?.id ?? null })
+      .eq("id", claimId);
+    if (error) { setNote("Error: " + error.message); return; }
+    setNote("Rejected.");
+    await loadClaims();
+  };
+
+  return (
+    <Card>
+      <SectionTitle>Moderation — Provider Claims</SectionTitle>
+      <p className="text-white/70 mb-3">Approve or reject ownership claims. Approving sets the provider’s owner and marks it as claimed.</p>
+      <div className="flex items-center gap-3 mb-3">
+        <Button onClick={loadClaims} variant="outline">{loading ? "Refreshing..." : "Refresh"}</Button>
+        {note && <span className="text-white/70 text-sm">{note}</span>}
       </div>
-      <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-        <div className="text-white/70 text-sm">User Reports</div>
-        <div className="text-3xl text-white font-semibold">3</div>
-      </div>
-      <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-        <div className="text-white/70 text-sm">Open Cases</div>
-        <div className="text-3xl text-white font-semibold">5</div>
-      </div>
-    </div>
-    <div className="mt-4">
-      <div className="text-white font-medium mb-2">Flag Queue</div>
-      <div className="space-y-3">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="p-3 rounded-xl bg-white/5 border border-white/10">
-            <div className="text-white/90">Potential policy violation in Review #{100 + i}</div>
-            <div className="text-white/60 text-sm">
-              Summary: Reviewer alleges missed appointment; suggests refund or redo.
+
+      {claims.length === 0 ? (
+        <div className="text-white/60">No pending claims.</div>
+      ) : (
+        <div className="space-y-3">
+          {claims.map((c) => (
+            <div key={c.id} className="p-3 rounded-xl bg-white/5 border border-white/10">
+              <div className="text-white font-medium">
+                {c.providers?.name || "Unknown"} — {c.providers?.service || "—"} (ZIP {c.providers?.zip || "—"})
+              </div>
+              <div className="text-white/70 text-sm">
+                Claimant: {c.users?.email || c.claimant_user} • Submitted: {new Date(c.created_at).toLocaleString()}
+              </div>
+              <div className="text-white/60 text-sm mt-1">
+                Email: {c.business_email || "—"} • Phone: {c.phone || "—"} • Site: {c.website || "—"}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <Button onClick={() => approve(c.id, c.provider_id, c.claimant_user)}>Approve</Button>
+                <Button variant="outline" onClick={() => reject(c.id)}>Reject</Button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  </Card>
-);
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+};
 
 const Claim = ({ stylist }: { stylist: Stylist | null }) => {
   const [bizEmail, setBizEmail] = useState("");
