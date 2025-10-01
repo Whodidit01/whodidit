@@ -879,34 +879,39 @@ export default function App() {
   const [selected, setSelected] = useState<Stylist | null>(null);
   const [isAdmin, setIsAdmin] = useState(false); // toggle after you add owner role
 
+  // opens Claim section when "Claim this profile" is clicked
   useEffect(() => {
     const handler = () => setTab("claim");
     window.addEventListener("go-claim", handler as EventListener);
     return () => window.removeEventListener("go-claim", handler as EventListener);
   }, []);
-// ↓ Add this NEW effect right under the go-claim effect
-useEffect(() => {
-  (async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", user.id)
-      .maybeSingle();
+  // show Moderation tab only for admins
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
-    if (!error && data?.is_admin) setIsAdmin(true);
-  })();
-}, []);
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", user.id)
+        .maybeSingle();
 
-  return (
+      if (!error && data?.is_admin) setIsAdmin(true);
+    })();
+  }, []);
+
+    return (
     <div className="min-h-screen bg-[#0D1117] text-white">
       <div className="max-w-6xl mx-auto px-5 py-6">
         <div className="flex items-center justify-between mb-6">
           <Logo />
           <Nav current={tab} setCurrent={setTab} isAdmin={isAdmin} />
         </div>
+
         <AnimatePresence mode="wait">
           <motion.div
             key={tab}
@@ -932,14 +937,21 @@ useEffect(() => {
             {tab === "moderate" && isAdmin && <Moderation />}
           </motion.div>
         </AnimatePresence>
-        <div className="mt-8 text-white/60 text-xs">
-  © {new Date().getFullYear()} Whodid It? — Like it or not. All rights reserved.
 
-  <button
-    onClick={() => (window.location.href = "/help")}
-    className="ml-4 px-4 py-2 rounded-2xl shadow"
-    style={{ backgroundColor: "coral", color: "black" }}
-  >
-    Need help?
-  </button>
-</div>
+        {/* FOOTER + HELP BUTTON */}
+        <div className="mt-8 text-white/60 text-xs flex items-center">
+          <span>
+            © {new Date().getFullYear()} Whodid It? — Like it or not. All rights reserved.
+          </span>
+          <button
+            onClick={() => (window.location.href = "/help")}
+            className="ml-4 px-4 py-2 rounded-2xl shadow"
+            style={{ backgroundColor: "coral", color: "black" }}
+          >
+            Need help?
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
