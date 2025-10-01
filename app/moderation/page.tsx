@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { supabase } from "@/app/lib/supabase";
+import { supabase } from "../../lib/supabase";
 
 // --- tiny UI bits ---
 const Card = ({ children }: { children: React.ReactNode }) => (
@@ -102,8 +102,8 @@ export default function ModerationPage() {
       `)
       .neq("status", "rejected") // show pending/approved up top; tweak as you like
       .order("created_at", { ascending: true });
-    if (!error && Array.isArray(data)) setClaims(data as ClaimRow[]);
-    setLoadingClaims(false);
+    if (!error && Array.isArray(data)) setClaims(data as unknown as ClaimRow[]);
+
   };
 
   const loadContacts = async () => {
