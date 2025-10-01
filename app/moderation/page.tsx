@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase"; // <- keep this relative path
 
-// --- tiny UI bits ---
+// --- UI helpers (tiny) ---
 const Card = ({ children }: { children: React.ReactNode }) => (
   <div className="rounded-2xl p-5 bg-white/5 backdrop-blur border border-white/10 shadow-lg">{children}</div>
 );
@@ -34,7 +34,7 @@ const Button = ({
   </button>
 );
 
-// --- types ---
+// --- Types (minimal) ---
 type ClaimRow = {
   id: string;
   created_at: string;
@@ -44,53 +44,29 @@ type ClaimRow = {
   website: string | null;
   claimant_user: string;
   provider_id: string;
-  providers: {
-    id: string;
-    name: string | null;
-    zip: string | null;
-    service: string | null;
-    claimed: boolean | null;
-    owner_user: string | null;
-  } | null;
+  providers: { id: string; name: string; zip: string | null; service: string | null; claimed: boolean; owner_user: string | null } | null;
   users: { email: string | null } | null;
 };
 
 type ContactRow = {
   id: string;
   created_at: string;
-  from_user: string | null;
-  status: "new" | "read" | "closed";
-  email: string | null;
+  status: "new" | "archived" | "escalated";
   name: string | null;
+  email: string | null;
   question: string | null;
+  from_user: string | null;
 };
 
-// --- page ---
+// --- Component ---
 export default function ModerationPage() {
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [claims, setClaims] = useState<ClaimRow[]>([]);
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [loadingClaims, setLoadingClaims] = useState(false);
+  const [loadingContacts, setLoadingContacts] = useState(false);
   const [note, setNote] = useState("");
 
-  // queues
-  const [claims, setClaims] = useState<ClaimRow[]>([]);
-  const [loadingClaims, setLoadingClaims] = useState(false);
-
-  const [contacts, setContacts] = useState<ContactRow[]>([]);
-  const [loadingContacts, setLoadingContacts] = useState(false);
-
-  // gate: only admins can view this page
-  useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("is_admin")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (data?.is_admin) setIsAdmin(true);
-    })();
-  }, []);
-
+  // Load provider claims (pending)
   const loadClaims = async () => {
     setLoadingClaims(true);
     const { data, error } = await supabase
@@ -100,109 +76,123 @@ export default function ModerationPage() {
         providers:provider_id ( id, name, zip, service, claimed, owner_user ),
         users:claimant_user ( email )
       `)
-      .neq("status", "rejected") // show pending/approved up top; tweak as you like
+      .eq("status", "pending")
       .order("created_at", { ascending: true });
-    if (!error && Array.isArray(data)) setClaims(data as unknown as ClaimRow[]);
-
+    if (!error && Array.isArray(data)) {
+      // data comes as any[], cast safely
+      setClaims(data as unknown as ClaimRow[]);
+    }
+    setLoadingClaims(false);
   };
 
+  // Load contact messages (new)
   const loadContacts = async () => {
     setLoadingContacts(true);
     const { data, error } = await supabase
       .from("contact_messages")
-      .select("*")
-      .neq("status", "closed") // show new/read; keep closed out of queue
-      .order("created_at", { ascending: true });
+      .select("id, created_at, status, name, email, question, from_user")
+      .in("status", ["new", "escalated"]) // show new + escalated in queue
+      .order("created_at", { ascending: false });
     if (!error && Array.isArray(data)) setContacts(data as ContactRow[]);
     setLoadingContacts(false);
   };
 
   useEffect(() => {
-    if (!isAdmin) return;
     loadClaims();
     loadContacts();
-  }, [isAdmin]);
+  }, []);
 
-  // --- claim actions ---
-  const approveClaim = async (claimId: string, providerId: string, claimantUser: string) => {
-    setNote("Approving claim…");
+  // Approve / Reject provider claim
+  const approve = async (claimId: string, providerId: string, claimantUser: string) => {
+    setNote("Approving…");
     const { error: pErr } = await supabase
       .from("providers")
       .update({ owner_user: claimantUser, claimed: true })
       .eq("id", providerId);
-    if (pErr) return setNote("Error (provider update): " + pErr.message);
-
+    if (pErr) {
+      setNote("Error (provider update): " + pErr.message);
+      return;
+    }
     const { data: me } = await supabase.auth.getUser();
     const { error: cErr } = await supabase
       .from("provider_claims")
-      .update({
-        status: "approved",
-        decided_at: new Date().toISOString(),
-        decided_by: me?.user?.id ?? null,
-      })
+      .update({ status: "approved", decided_at: new Date().toISOString(), decided_by: me?.user?.id ?? null })
       .eq("id", claimId);
-    if (cErr) return setNote("Error (claim update): " + cErr.message);
-
+    if (cErr) {
+      setNote("Error (claim update): " + cErr.message);
+      return;
+    }
     setNote("Approved.");
     await loadClaims();
   };
 
-  const rejectClaim = async (claimId: string) => {
-    setNote("Rejecting claim…");
+  const reject = async (claimId: string) => {
+    setNote("Rejecting…");
     const { data: me } = await supabase.auth.getUser();
     const { error } = await supabase
       .from("provider_claims")
-      .update({
-        status: "rejected",
-        decided_at: new Date().toISOString(),
-        decided_by: me?.user?.id ?? null,
-      })
+      .update({ status: "rejected", decided_at: new Date().toISOString(), decided_by: me?.user?.id ?? null })
       .eq("id", claimId);
-    if (error) return setNote("Error: " + error.message);
+    if (error) {
+      setNote("Error: " + error.message);
+      return;
+    }
     setNote("Rejected.");
     await loadClaims();
   };
 
-  // --- contact actions ---
-  const setContactStatus = async (id: string, status: "new" | "read" | "closed") => {
-    setNote("Updating message…");
-    const { error } = await supabase.from("contact_messages").update({ status }).eq("id", id);
-    if (error) return setNote("Error (contact update): " + error.message);
-    setNote("Updated.");
-    await loadContacts();
+  // Archive / Escalate messages
+  const archiveMessage = async (id: string) => {
+    const { error } = await supabase.from("contact_messages").update({ status: "archived" }).eq("id", id);
+    if (!error) setContacts((prev) => prev.filter((m) => m.id !== id));
+  };
+  const escalateMessage = async (id: string) => {
+    const { error } = await supabase.from("contact_messages").update({ status: "escalated" }).eq("id", id);
+    if (!error) {
+      // keep it visible but mark escalated
+      setContacts((prev) => prev.map((m) => (m.id === id ? { ...m, status: "escalated" } as ContactRow : m)));
+    }
   };
 
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-[#0D1117] text-white">
-        <div className="max-w-5xl mx-auto px-5 py-10">
-          <Card>
-            <SectionTitle>Moderation</SectionTitle>
-            <p className="text-white/70">You must be an admin to view this page.</p>
-          </Card>
-        </div>
-      </div>
-    );
-  }
+  // KPIs (simple)
+  const kpiClaims = claims.length;
+  const kpiNewMsgs = contacts.filter((c) => c.status === "new").length;
+  const kpiEscalated = contacts.filter((c) => c.status === "escalated").length;
 
   return (
     <div className="min-h-screen bg-[#0D1117] text-white">
-      <div className="max-w-6xl mx-auto px-5 py-8 space-y-8">
-        {note && (
-          <div className="text-white/70 text-sm">{note}</div>
-        )}
-
-        {/* Provider Claims */}
+      <div className="max-w-6xl mx-auto px-5 py-6">
+        {/* ===== Overview tiles (ADMIN DASHBOARD LOOK) ===== */}
         <Card>
-          <div className="flex items-center justify-between mb-3">
-            <SectionTitle>Moderation — Provider Claims</SectionTitle>
-            <Button variant="outline" onClick={loadClaims}>
-              {loadingClaims ? "Refreshing…" : "Refresh"}
-            </Button>
+          <SectionTitle>Moderation — Admin Overview</SectionTitle>
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+              <div className="text-white/70 text-sm">Pending Provider Claims</div>
+              <div className="text-3xl text-white font-semibold">{kpiClaims}</div>
+            </div>
+            <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+              <div className="text-white/70 text-sm">New Contact Messages</div>
+              <div className="text-3xl text-white font-semibold">{kpiNewMsgs}</div>
+            </div>
+            <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+              <div className="text-white/70 text-sm">Escalated Items</div>
+              <div className="text-3xl text-white font-semibold">{kpiEscalated}</div>
+            </div>
+          </div>
+        </Card>
+
+        <div className="h-6" />
+
+        {/* ===== Provider Claims ===== */}
+        <Card>
+          <SectionTitle>Provider Claims</SectionTitle>
+          <div className="flex items-center gap-3 mb-3">
+            <Button variant="outline" onClick={loadClaims}>{loadingClaims ? "Refreshing…" : "Refresh"}</Button>
+            {note && <span className="text-white/70 text-sm">{note}</span>}
           </div>
 
           {claims.length === 0 ? (
-            <div className="text-white/60">No claims in queue.</div>
+            <div className="text-white/60">No pending claims.</div>
           ) : (
             <div className="space-y-3">
               {claims.map((c) => (
@@ -211,15 +201,14 @@ export default function ModerationPage() {
                     {c.providers?.name || "Unknown"} — {c.providers?.service || "—"} (ZIP {c.providers?.zip || "—"})
                   </div>
                   <div className="text-white/70 text-sm">
-                    Claimant: {c.users?.email || c.claimant_user} • Submitted:{" "}
-                    {new Date(c.created_at).toLocaleString()} • Status: {c.status}
+                    Claimant: {c.users?.email || c.claimant_user} • Submitted: {new Date(c.created_at).toLocaleString()}
                   </div>
                   <div className="text-white/60 text-sm mt-1">
                     Email: {c.business_email || "—"} • Phone: {c.phone || "—"} • Site: {c.website || "—"}
                   </div>
                   <div className="mt-2 flex gap-2">
-                    <Button onClick={() => approveClaim(c.id, c.provider_id, c.claimant_user)}>Approve</Button>
-                    <Button variant="outline" onClick={() => rejectClaim(c.id)}>Reject</Button>
+                    <Button onClick={() => approve(c.id, c.provider_id, c.claimant_user)}>Approve</Button>
+                    <Button variant="outline" onClick={() => reject(c.id)}>Reject</Button>
                   </div>
                 </div>
               ))}
@@ -227,10 +216,12 @@ export default function ModerationPage() {
           )}
         </Card>
 
-        {/* Contact Messages */}
+        <div className="h-6" />
+
+        {/* ===== Contact Messages + Flag Queue (Archive/Escalate) ===== */}
         <Card>
-          <div className="flex items-center justify-between mb-3">
-            <SectionTitle>Contact Messages (Need help?)</SectionTitle>
+          <SectionTitle>Contact Messages (Need help?)</SectionTitle>
+          <div className="mb-3">
             <Button variant="outline" onClick={loadContacts}>
               {loadingContacts ? "Refreshing…" : "Refresh"}
             </Button>
@@ -242,16 +233,16 @@ export default function ModerationPage() {
             <div className="space-y-3">
               {contacts.map((m) => (
                 <div key={m.id} className="p-3 rounded-xl bg-white/5 border border-white/10">
-                  <div className="text-white font-medium">
-                    {m.name || "Anonymous"} {m.email ? `• ${m.email}` : ""}
+                  <div className="flex items-center justify-between">
+                    <div className="text-white font-medium">
+                      {m.name || "Anonymous"} • {m.email || "no email"}
+                    </div>
+                    <div className="text-white/60 text-xs">{new Date(m.created_at).toLocaleString()}</div>
                   </div>
-                  <div className="text-white/70 text-sm">
-                    Received: {new Date(m.created_at).toLocaleString()} • Status: {m.status}
-                  </div>
-                  <div className="text-white/80 mt-2 whitespace-pre-wrap">{m.question || "(no message)"}</div>
-                  <div className="mt-3 flex gap-2">
-                    <Button variant="outline" onClick={() => setContactStatus(m.id, "read")}>Mark read</Button>
-                    <Button onClick={() => setContactStatus(m.id, "closed")}>Resolve</Button>
+                  <div className="text-white/80 mt-1">{m.question || "(no message body)"}</div>
+                  <div className="mt-2 flex gap-2">
+                    <Button variant="outline" onClick={() => archiveMessage(m.id)}>Archive</Button>
+                    <Button onClick={() => escalateMessage(m.id)}>Escalate</Button>
                   </div>
                 </div>
               ))}
