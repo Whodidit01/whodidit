@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase"; // <- keep this relative path
+import { supabase } from "../../lib/supabase";
+
 
 // --- UI helpers (tiny) ---
 const Card = ({ children }: { children: React.ReactNode }) => (
