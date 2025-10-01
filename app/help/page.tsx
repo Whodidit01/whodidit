@@ -21,10 +21,11 @@ export default function HelpPage() {
     }
 
     const { error } = await supabase.from("contact_messages").insert({
-      name,
-      email,
-      message,
-    });
+  name,
+  email,
+  question: message,  
+});
+
 
     if (error) {
       setStatus("error");
