@@ -903,6 +903,12 @@ export default function App() {
       if (!error && data?.is_admin) setIsAdmin(true);
     })();
   }, []);
+// redirect the in-app "Moderation" tab to the single /moderation page
+useEffect(() => {
+  if (isAdmin && tab === "moderate") {
+    window.location.href = "/moderation";
+  }
+}, [tab, isAdmin]);
 
     return (
     <div className="min-h-screen bg-[#0D1117] text-white">
@@ -934,7 +940,14 @@ export default function App() {
             {tab === "resolve" && <Resolve />}
             {tab === "account" && <Account />}
             {tab === "claim" && <Claim stylist={selected} />}
-            {tab === "moderate" && isAdmin && <Moderation />}
+            {tab === "moderate" && isAdmin && (
+  <Card>
+    <SectionTitle>Moderation</SectionTitle>
+    <p className="text-white/70 mb-2">Redirecting to the moderation dashboard…</p>
+    <a href="/moderation" className="underline text-[#00D1B2]">Open moderation</a>
+  </Card>
+)}
+
           </motion.div>
         </AnimatePresence>
 
