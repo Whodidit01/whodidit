@@ -932,16 +932,14 @@ useEffect(() => {
             {tab === "moderate" && isAdmin && <Moderation />}
           </motion.div>
         </AnimatePresence>
-        <div className="mt-8 flex items-center justify-between">
-  <div className="text-white/60 text-xs">
-    © {new Date().getFullYear()} Whodid It? — Like it or not. All rights reserved.
-  </div>
+        <div className="mt-8 text-white/60 text-xs">
+  © {new Date().getFullYear()} Whodid It? — Like it or not. All rights reserved.
+
   <button
     onClick={() => (window.location.href = "/help")}
-    className="px-4 py-2 rounded-2xl shadow"
+    className="ml-4 px-4 py-2 rounded-2xl shadow"
     style={{ backgroundColor: "coral", color: "black" }}
   >
     Need help?
   </button>
 </div>
-
