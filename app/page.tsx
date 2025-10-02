@@ -202,7 +202,95 @@ const Home = ({ go }: { go: (id: string) => void }) => (
   </div>
 );
 
-const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
+const Search = ({ onSelect }: { onSelect: (s: any) => void }) => {
+  const [zip, setZip] = useState("");
+  const [service, setService] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<any[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchProviders = async () => {
+      setLoading(true);
+
+      let query = supabase
+        .from("providers")
+        .select("id,name,service,zip,claimed,owner_user,created_at");
+
+      if (zip) query = query.ilike("zip", `${zip}%`);
+      if (service) query = query.ilike("service", `%${service}%`);
+
+      const { data, error } = await query.order("created_at", { ascending: false }).limit(25);
+
+      if (!cancelled) {
+        setResults(error ? [] : data ?? []);
+        setLoading(false);
+      }
+    };
+
+    fetchProviders();
+    return () => {
+      cancelled = true;
+    };
+  }, [zip, service]);
+
+  return (
+    <div className="grid md:grid-cols-3 gap-6">
+      <Card>
+        <SectionTitle>Filters</SectionTitle>
+        <input
+          value={zip}
+          onChange={(e) => setZip(e.target.value)}
+          placeholder="ZIP code"
+          className="w-full mb-3 px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+        />
+        <input
+          value={service}
+          onChange={(e) => setService(e.target.value)}
+          placeholder="Service (hair, makeup, lashes)"
+          className="w-full mb-3 px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+        />
+        <p className="text-white/60 text-sm">
+          {loading ? "Searching…" : "Tip: try a partial ZIP (e.g., 100) or service keyword."}
+        </p>
+      </Card>
+
+      <div className="md:col-span-2 grid gap-4">
+        {results.map((p) => (
+          <Card key={p.id}>
+            <div className="flex gap-4 items-center">
+              {/* simple placeholder avatar */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`https://picsum.photos/seed/${p.id}/80/80`}
+                alt={p.name}
+                className="rounded-2xl"
+              />
+              <div className="flex-1">
+                <div className="text-white font-semibold">
+                  {p.name} — {p.service || "Service"}
+                </div>
+                <div className="text-white/60 text-sm">ZIP {p.zip || "—"}</div>
+                <div className="mt-2">
+                  <Chip active>{p.claimed ? "Claimed" : "Unclaimed"}</Chip>
+                </div>
+              </div>
+              <Button onClick={() => onSelect(p)}>Open profile</Button>
+            </div>
+          </Card>
+        ))}
+
+        {!loading && results.length === 0 && (
+          <Card>
+            <div className="text-white/70">No results yet. Try adjusting filters or add a review to create a provider.</div>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+};
+
   const [zip, setZip] = useState("");
   const [service, setService] = useState("");
   const results = useMemo(
