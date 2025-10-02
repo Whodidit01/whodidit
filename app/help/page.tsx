@@ -42,7 +42,7 @@ export default function HelpPage() {
   const send = async () => {
     setNote("");
     if (!message.trim()) {
-      setNote("Please enter a question.");
+      setNote("Please enter a message.");
       return;
     }
     const { data: { user } } = await supabase.auth.getUser();
@@ -84,7 +84,7 @@ export default function HelpPage() {
               className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
             />
             <textarea
-              placeholder="Your question"
+              placeholder="Your message"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={4}
