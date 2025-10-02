@@ -102,7 +102,7 @@ export default function HelpPage() {
         <Card>
           <SectionTitle>About us / Legal</SectionTitle>
           <div className="space-y-2 text-white/80 text-sm">
-            <p><strong>About Whodid It?Like it or not.</strong> We help clients share honest, permanent reviews of beauty services and assist with a resolve.</p>
+            <p><strong>About Whodid It?Like it or not.</strong> We help clients share honest, permanent reviews of beauty services and assist with issue resolution.</p>
             <p><strong>Disclaimer:</strong> Reviews are user-submitted and subject to moderation. Harassment or threats are prohibited. whodid it? Like it or not. is a public review platform.
 We verify every review.
 All users are responsible for the truthfulness of their claims.
