@@ -605,7 +605,6 @@ const Resolve = () => {
           <label className="block text-white/80 mb-2">Proof of service (receipt, DMs, booking, etc.)</label>
           <input type="file" className="text-white" multiple />
         </div>
-
         <div>
           <label className="block text-white/80 mb-2">Select service</label>
           <select
@@ -621,63 +620,71 @@ const Resolve = () => {
           <div className="text-white/70 text-sm mt-2">Price: ${priceFor(selectedService).toFixed(2)}</div>
         </div>
 
-        {/* ACTIONS */}
         <div className="md:col-span-2 flex flex-wrap gap-3">
           <Button onClick={() => setShowCheckout(true)}>Help me resolve this</Button>
-
-          {/* NEW — open link panel instead of jumping to Claim */}
-          <Button variant="outline" onClick={() => setShowLinkPanel((v) => !v)}>
-            {showLinkPanel ? "Hide stylist link" : "Add stylist profile"}
+          <Button variant="outline" onClick={() => setShowLinkPanel(true)}>
+            Add stylist profile
           </Button>
         </div>
 
-        {/* NEW — Link to Stylist Panel */}
         {showLinkPanel && (
-          <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10">
-            <div className="text-white font-semibold mb-2">Attach a stylist profile</div>
-            <p className="text-white/70 text-sm mb-3">
-              Search by name/ZIP/service. If not found, this will create a profile and link your request to it.
-            </p>
+          <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10 text-white/90">
+            <div className="font-semibold mb-2">Link a Stylist to this Request</div>
+            <p className="text-white/70 mb-3">Enter the details of the stylist you want this request associated with.</p>
+
             <div className="grid md:grid-cols-3 gap-3">
               <input
-                placeholder="Stylist/Business name"
+                placeholder="Stylist/Business Name"
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
                 value={linkName}
                 onChange={(e) => setLinkName(e.target.value)}
-                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
               />
               <input
-                placeholder="ZIP (optional)"
+                placeholder="ZIP code"
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
                 value={linkZip}
                 onChange={(e) => setLinkZip(e.target.value)}
-                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
               />
               <input
-                placeholder="Service (optional)"
+                placeholder="Service type"
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
                 value={linkSvc}
                 onChange={(e) => setLinkSvc(e.target.value)}
-                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
               />
             </div>
-            <div className="mt-3 flex items-center gap-2">
-              <Button onClick={linkProvider}>Link provider</Button>
-              {linkedProviderId && (
-                <span className="text-white/70 text-sm">Linked to provider ID: {linkedProviderId}</span>
-              )}
+
+            <div className="mt-3 flex gap-2">
+              <Button onClick={linkProvider}>Link stylist</Button>
+              <Button variant="outline" onClick={() => setShowLinkPanel(false)}>
+                Cancel
+              </Button>
             </div>
-            {linkNote && <div className="text-white/70 text-sm mt-2">{linkNote}</div>}
+            {linkNote && <div className="mt-2 text-white/70 text-sm">{linkNote}</div>}
           </div>
         )}
 
-        {/* Checkout (unchanged) */}
         {showCheckout && (
           <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10 text-white/90">
             <div className="font-semibold mb-2">Checkout</div>
             <p className="text-white/80 mb-3">
               You selected: <strong>{selectedService}</strong> — ${priceFor(selectedService).toFixed(2)}
             </p>
+
+            {linkedProviderId ? (
+              <p className="text-green-400 mb-2 text-sm">✅ Linked to provider ID: {linkedProviderId}</p>
+            ) : (
+              <p className="text-yellow-400 mb-2 text-sm">⚠️ Not yet linked to a stylist profile</p>
+            )}
+
             <div className="grid md:grid-cols-2 gap-3">
-              <input placeholder="Full name" className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
-              <input placeholder="Email for updates" className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
+              <input
+                placeholder="Full name"
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+              />
+              <input
+                placeholder="Email for updates"
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+              />
               <input
                 placeholder="Card number"
                 className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
@@ -695,6 +702,7 @@ const Resolve = () => {
     </Card>
   );
 };
+
 
 
 const Moderation = () => {
