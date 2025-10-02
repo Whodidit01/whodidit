@@ -593,7 +593,10 @@ const Resolve = () => {
         </div>
         <div className="md:col-span-2 flex flex-wrap gap-3">
           <Button onClick={() => setShowCheckout(true)}>Help me resolve this</Button>
-          <Button variant="outline">Add stylist profile</Button>
+          <Button variant="outline" onClick={() => window.dispatchEvent(new CustomEvent("go-claim"))}>
+  Add stylist profile
+</Button>
+
         </div>
         {showCheckout && (
           <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10 text-white/90">
