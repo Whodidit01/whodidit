@@ -563,7 +563,34 @@ const ReviewForm = () => {
 const Resolve = () => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [selectedService, setSelectedService] = useState("Refund");
-  const priceFor = (opt: string) => (opt === "Civil suit steps" ? 10.00 : 4.99);
+  const priceFor = (opt: string) => (opt === "Civil suit steps" ? 10.0 : 4.99);
+
+  // NEW — link a stylist profile to this resolve request
+  const [showLinkPanel, setShowLinkPanel] = useState(false);
+  const [linkName, setLinkName] = useState("");
+  const [linkZip, setLinkZip] = useState("");
+  const [linkSvc, setLinkSvc] = useState("");
+  const [linkedProviderId, setLinkedProviderId] = useState<string | null>(null);
+  const [linkNote, setLinkNote] = useState("");
+
+  const linkProvider = async () => {
+    setLinkNote("");
+    try {
+      if (!linkName.trim()) {
+        setLinkNote("Please enter the stylist/business name.");
+        return;
+      }
+      const providerId = await upsertProvider({
+        name: linkName,
+        zip: linkZip,
+        service: linkSvc,
+      });
+      setLinkedProviderId(providerId);
+      setLinkNote("Linked! This resolve request is now associated with that profile.");
+    } catch (e: any) {
+      setLinkNote(`Error linking provider: ${e?.message || e}`);
+    }
+  };
 
   return (
     <Card>
@@ -572,11 +599,13 @@ const Resolve = () => {
         Get next steps for small claims, chargebacks, or reporting the service provider. To proceed, upload proof of
         appointment/interaction.
       </p>
+
       <div className="grid md:grid-cols-2 gap-4">
         <div>
           <label className="block text-white/80 mb-2">Proof of service (receipt, DMs, booking, etc.)</label>
           <input type="file" className="text-white" multiple />
         </div>
+
         <div>
           <label className="block text-white/80 mb-2">Select service</label>
           <select
@@ -591,13 +620,55 @@ const Resolve = () => {
           </select>
           <div className="text-white/70 text-sm mt-2">Price: ${priceFor(selectedService).toFixed(2)}</div>
         </div>
+
+        {/* ACTIONS */}
         <div className="md:col-span-2 flex flex-wrap gap-3">
           <Button onClick={() => setShowCheckout(true)}>Help me resolve this</Button>
-          <Button variant="outline" onClick={() => window.dispatchEvent(new CustomEvent("go-claim"))}>
-  Add stylist profile
-</Button>
 
+          {/* NEW — open link panel instead of jumping to Claim */}
+          <Button variant="outline" onClick={() => setShowLinkPanel((v) => !v)}>
+            {showLinkPanel ? "Hide stylist link" : "Add stylist profile"}
+          </Button>
         </div>
+
+        {/* NEW — Link to Stylist Panel */}
+        {showLinkPanel && (
+          <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10">
+            <div className="text-white font-semibold mb-2">Attach a stylist profile</div>
+            <p className="text-white/70 text-sm mb-3">
+              Search by name/ZIP/service. If not found, this will create a profile and link your request to it.
+            </p>
+            <div className="grid md:grid-cols-3 gap-3">
+              <input
+                placeholder="Stylist/Business name"
+                value={linkName}
+                onChange={(e) => setLinkName(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+              />
+              <input
+                placeholder="ZIP (optional)"
+                value={linkZip}
+                onChange={(e) => setLinkZip(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+              />
+              <input
+                placeholder="Service (optional)"
+                value={linkSvc}
+                onChange={(e) => setLinkSvc(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+              />
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <Button onClick={linkProvider}>Link provider</Button>
+              {linkedProviderId && (
+                <span className="text-white/70 text-sm">Linked to provider ID: {linkedProviderId}</span>
+              )}
+            </div>
+            {linkNote && <div className="text-white/70 text-sm mt-2">{linkNote}</div>}
+          </div>
+        )}
+
+        {/* Checkout (unchanged) */}
         {showCheckout && (
           <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10 text-white/90">
             <div className="font-semibold mb-2">Checkout</div>
@@ -605,14 +676,8 @@ const Resolve = () => {
               You selected: <strong>{selectedService}</strong> — ${priceFor(selectedService).toFixed(2)}
             </p>
             <div className="grid md:grid-cols-2 gap-3">
-              <input
-                placeholder="Full name"
-                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-              />
-              <input
-                placeholder="Email for updates"
-                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-              />
+              <input placeholder="Full name" className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
+              <input placeholder="Email for updates" className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
               <input
                 placeholder="Card number"
                 className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
@@ -630,6 +695,7 @@ const Resolve = () => {
     </Card>
   );
 };
+
 
 const Moderation = () => {
   const [claims, setClaims] = useState<any[]>([]);
