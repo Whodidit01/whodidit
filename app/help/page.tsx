@@ -68,7 +68,7 @@ export default function HelpPage() {
         <Card>
           <SectionTitle>Need help?</SectionTitle>
           <p className="text-white/70 mb-4">
-            Send us a quick note. Your message goes straight to Moderation.
+            Send us a quick note. Your message goes straight to our team.
           </p>
           <div className="grid md:grid-cols-2 gap-3">
             <input
@@ -78,7 +78,7 @@ export default function HelpPage() {
               className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
             />
             <input
-              placeholder="Email (optional)"
+              placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
@@ -102,8 +102,13 @@ export default function HelpPage() {
         <Card>
           <SectionTitle>About us / Legal</SectionTitle>
           <div className="space-y-2 text-white/80 text-sm">
-            <p><strong>About Whodid It?</strong> We help clients share honest, permanent reviews of beauty services.</p>
-            <p><strong>Disclaimer:</strong> Reviews are user-submitted and subject to moderation. Harassment or threats are prohibited.</p>
+            <p><strong>About Whodid It?Like it or not.</strong> We help clients share honest, permanent reviews of beauty services and assist with a resolve.</p>
+            <p><strong>Disclaimer:</strong> Reviews are user-submitted and subject to moderation. Harassment or threats are prohibited. whodid it? Like it or not. is a public review platform.
+We verify every review.
+All users are responsible for the truthfulness of their claims.
+whodid it? Like it or not. is not a legal authority and cannot guarantee results in disputes or legal actions.
+By using our "Resolve the Issue" service, you acknowledge that no refund, resolution, or legal success is guaranteed.
+Use of the platform is at your own risk</p>
             <p><strong>Contact:</strong> Use the form above. We typically reply within 1–2 business days.</p>
           </div>
         </Card>
