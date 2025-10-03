@@ -11,7 +11,6 @@ async function upsertProvider({ name, zip, service }: { name: string; zip?: stri
   const s = (service || "").trim();
   if (!n) throw new Error("Provider name is required");
 
-  // Find by name (case-insensitive) and optional zip/service
   const { data: existing, error: findErr } = await supabase
     .from("providers")
     .select("id")
@@ -49,7 +48,8 @@ type SectionTitleProps = { children: React.ReactNode };
 type NavProps = { current: string; setCurrent: (id: string) => void; isAdmin: boolean };
 
 type Stylist = {
-  id: number;
+  id: number; // local display id
+  providerId?: string; // REAL DB id
   name: string;
   service: string;
   zip: string;
@@ -66,7 +66,7 @@ const Button = ({ children, onClick, variant = "primary", disabled = false }: Bu
     disabled={disabled}
     className={`px-4 py-2 rounded-2xl shadow ${
       variant === "outline"
-        ? "border border-white/20 text-white hover:bg-white/10"
+        ? "border border-white/20 text-white hover:bg.white/10"
         : "bg-[#00D1B2] text-[#0D1117] hover:opacity-90"
     } disabled:opacity-50`}
   >
@@ -101,7 +101,7 @@ const Card = ({ children }: CardProps) => (
 );
 
 const SectionTitle = ({ children }: SectionTitleProps) => (
-  <h2 className="text-xl font-semibold text-white mb-3">{children}</h2>
+  <h2 className="text-xl font-semibold text.white mb-3">{children}</h2>
 );
 
 const Logo = () => (
@@ -116,7 +116,7 @@ const Nav = ({ current, setCurrent, isAdmin }: NavProps) => {
   const baseTabs = [
     { id: "home", label: "Home" },
     { id: "search", label: "Search" },
-    { id: "profile", label: "Service Provider" }, // keep profile tab to preview a provider
+    { id: "profile", label: "Service Provider" },
     { id: "review", label: "Write Review" },
     { id: "resolve", label: "Resolve" },
     { id: "account", label: "My Profile" },
@@ -138,40 +138,6 @@ const Nav = ({ current, setCurrent, isAdmin }: NavProps) => {
     </div>
   );
 };
-
-// ---------- Mock data ----------
-const mockStylists: Stylist[] = [
-  {
-    id: 1,
-    name: "Ava C.",
-    service: "Hairstylist",
-    zip: "10001",
-    pricing: 4,
-    serviceScore: 5,
-    cleanliness: 4,
-    image: "https://picsum.photos/seed/ava/80/80",
-  },
-  {
-    id: 2,
-    name: "Bella M.",
-    service: "Makeup Artist",
-    zip: "30309",
-    pricing: 3,
-    serviceScore: 4,
-    cleanliness: 5,
-    image: "https://picsum.photos/seed/bella/80/80",
-  },
-  {
-    id: 3,
-    name: "Noah L.",
-    service: "Lash Tech",
-    zip: "90001",
-    pricing: 5,
-    serviceScore: 3,
-    cleanliness: 4,
-    image: "https://picsum.photos/seed/noah/80/80",
-  },
-];
 
 // ---------- Sections ----------
 const Home = ({ go }: { go: (id: string) => void }) => (
@@ -221,7 +187,7 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
     (async () => {
       setLoading(true);
       setErr("");
-      const { data, error } = await supabase.from("providers").select("id,name,zip,service").limit(100);
+      const { data, error } = await supabase.from("providers").select("id,name,zip,service").limit(200);
       if (error) {
         setErr(error.message);
       } else {
@@ -241,16 +207,16 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
             (p.service || "").toLowerCase().includes(service.toLowerCase()) ||
             (p.name || "").toLowerCase().includes(service.toLowerCase())
         )
-        // Map DB rows into the Stylist shape used by the rest of the UI
         .map((p, idx) => ({
           id: idx + 1,
+          providerId: p.id,
           name: p.name,
           service: p.service || "Service",
           zip: p.zip || "—",
           pricing: 0,
           serviceScore: 0,
           cleanliness: 0,
-          image: `https://picsum.photos/seed/provider${idx + 1}/80/80`,
+          image: `https://picsum.photos/seed/provider-${p.id}/80/80`, // seed by real id to vary images
         })),
     [providers, zip, service]
   );
@@ -269,15 +235,15 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
           value={service}
           onChange={(e) => setService(e.target.value)}
           placeholder="Service or name"
-          className="w-full mb-3 px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+          className="w-full mb-3 px-3 py-2 rounded-xl bg.white/10 text-white placeholder-white/50"
         />
         {loading && <p className="text-white/60 text-sm">Loading…</p>}
         {err && <p className="text-red-300 text-sm">Error: {err}</p>}
       </Card>
 
       <div className="md:col-span-2 grid gap-4">
-        {results.map((s) => (
-          <Card key={`${s.name}-${s.zip}-${s.service}`}>
+        {results.map((s, index) => (
+          <Card key={(s.providerId ?? "") + "-" + index}>
             <div className="flex gap-4 items-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={s.image} alt={s.name} className="rounded-2xl" />
@@ -307,13 +273,36 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
   );
 };
 
+// ---------- Profile (REAL reviews; no faux text) ----------
 const Profile = ({ stylist, onWrite }: { stylist: Stylist | null; onWrite: () => void }) => {
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!stylist?.providerId) {
+        setReviews([]);
+        return;
+      }
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("reviews")
+        .select("id, body, created_at, anonymous")
+        .eq("provider_id", stylist.providerId)
+        .order("created_at", { ascending: false });
+      if (!error && Array.isArray(data)) setReviews(data);
+      setLoading(false);
+    };
+    load();
+  }, [stylist?.providerId]);
+
   if (!stylist)
     return (
       <Card>
         <div className="text-white/70">Pick a service provider from Search to preview a profile.</div>
       </Card>
     );
+
   return (
     <div className="grid md:grid-cols-3 gap-6">
       <Card>
@@ -332,35 +321,48 @@ const Profile = ({ stylist, onWrite }: { stylist: Stylist | null; onWrite: () =>
         <ScoreBar label="Cleanliness" value={stylist.cleanliness} />
         <div className="mt-4 flex gap-2">
           <Button onClick={onWrite}>Write a review</Button>
-          {/* @ts-ignore - CustomEvent on window */}
+          {/* @ts-ignore */}
           <Button variant="outline" onClick={() => window.dispatchEvent(new CustomEvent("go-claim"))}>
             Claim this profile
           </Button>
         </div>
       </Card>
+
       <div className="md:col-span-2 grid gap-4">
         <Card>
           <SectionTitle>Recent Reviews</SectionTitle>
-          <div className="space-y-4">
-            <div>
-              <div className="text-white font-medium">Anonymous</div>
-              <p className="text-white/80">Loved the bob cut. Quick and clean studio.</p>
+          {loading && <div className="text-white/60 text-sm">Loading…</div>}
+          {!loading && reviews.length === 0 && <div className="text-white/70">No reviews yet.</div>}
+          {!loading && reviews.length > 0 && (
+            <div className="space-y-4">
+              {reviews.map((r) => (
+                <div key={r.id}>
+                  <div className="text-white font-medium">{r.anonymous ? "Anonymous" : "Customer"}</div>
+                  <p className="text-white/80">{r.body}</p>
+                  <div className="text-white/50 text-xs mt-1">{new Date(r.created_at).toLocaleString()}</div>
+                </div>
+              ))}
             </div>
-            <div>
-              <div className="text-white font-medium">Zara • 10001</div>
-              <p className="text-white/80">Makeup was great, but check-in ran 15m late.</p>
-            </div>
-          </div>
+          )}
         </Card>
       </div>
     </div>
   );
 };
 
-const ReviewForm = () => {
-  const [providerName, setProviderName] = useState("");
-  const [zip, setZip] = useState("");
-  const [svc, setSvc] = useState("");
+// ---------- Review Form (prefills from selected provider) ----------
+const ReviewForm = ({
+  prefillName,
+  prefillZip,
+  prefillSvc,
+}: {
+  prefillName?: string;
+  prefillZip?: string;
+  prefillSvc?: string;
+}) => {
+  const [providerName, setProviderName] = useState(prefillName || "");
+  const [zip, setZip] = useState(prefillZip || "");
+  const [svc, setSvc] = useState(prefillSvc || "");
 
   const [pricing, setPricing] = useState(5);
   const [serviceScore, setServiceScore] = useState(5);
@@ -373,11 +375,16 @@ const ReviewForm = () => {
   const [body, setBody] = useState("");
   const [msg, setMsg] = useState("");
 
+  useEffect(() => {
+    if (prefillName !== undefined) setProviderName(prefillName || "");
+    if (prefillZip !== undefined) setZip(prefillZip || "");
+    if (prefillSvc !== undefined) setSvc(prefillSvc || "");
+  }, [prefillName, prefillZip, prefillSvc]);
+
   const handlePhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []).slice(0, 4);
     setPhotos(files as File[]);
   };
-
   const handleVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
     setVideo((e.target.files || [])[0] || null);
   };
@@ -464,7 +471,6 @@ const ReviewForm = () => {
           className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
         />
 
-        {/* Ratings */}
         <div>
           <label className="block text-white/80 mb-2">Pricing (1–5)</label>
           <select
@@ -553,14 +559,13 @@ const ReviewForm = () => {
 };
 
 /** =========================
- *  UPDATED: Resolve (Stripe Checkout redirect)
+ *  Resolve (Stripe Checkout redirect)
  *  ========================= */
 const Resolve = () => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [selectedService, setSelectedService] = useState("Refund");
   const priceFor = (opt: string) => (opt === "Civil suit steps" ? 10.0 : 4.99);
 
-  // Link a stylist profile to this resolve request
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [linkName, setLinkName] = useState("");
   const [linkZip, setLinkZip] = useState("");
@@ -568,7 +573,6 @@ const Resolve = () => {
   const [linkedProviderId, setLinkedProviderId] = useState<string | null>(null);
   const [linkNote, setLinkNote] = useState("");
 
-  // Simple customer fields for Checkout
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
 
@@ -579,11 +583,7 @@ const Resolve = () => {
         setLinkNote("Please enter the stylist/business name.");
         return;
       }
-      const providerId = await upsertProvider({
-        name: linkName,
-        zip: linkZip,
-        service: linkSvc,
-      });
+      const providerId = await upsertProvider({ name: linkName, zip: linkZip, service: linkSvc });
       setLinkedProviderId(providerId);
       setLinkNote("Linked! This resolve request is now associated with that profile.");
     } catch (e: any) {
@@ -591,7 +591,6 @@ const Resolve = () => {
     }
   };
 
-  // NEW: Start Stripe Checkout by calling your /api/checkout route
   const [paying, setPaying] = useState(false);
   const startCheckout = async () => {
     try {
@@ -616,8 +615,6 @@ const Resolve = () => {
         setPaying(false);
         return;
       }
-
-      // Redirect to Stripe's hosted checkout page
       window.location.href = data.url as string;
     } catch (err: any) {
       setLinkNote(`Payment error: ${err?.message || err}`);
@@ -653,7 +650,6 @@ const Resolve = () => {
           <div className="text-white/70 text-sm mt-2">Price: ${priceFor(selectedService).toFixed(2)}</div>
         </div>
 
-        {/* ACTIONS */}
         <div className="md:col-span-2 flex flex-wrap gap-3">
           <Button onClick={() => setShowCheckout(true)}>Help me resolve this</Button>
           <Button variant="outline" onClick={() => setShowLinkPanel((v) => !v)}>
@@ -661,7 +657,6 @@ const Resolve = () => {
           </Button>
         </div>
 
-        {/* Link to Stylist Panel */}
         {showLinkPanel && (
           <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10">
             <div className="text-white font-semibold mb-2">Attach a stylist profile</div>
@@ -690,15 +685,12 @@ const Resolve = () => {
             </div>
             <div className="mt-3 flex items-center gap-2">
               <Button onClick={linkProvider}>Link provider</Button>
-              {linkedProviderId && (
-                <span className="text-white/70 text-sm">Linked to provider ID: {linkedProviderId}</span>
-              )}
+              {linkedProviderId && <span className="text-white/70 text-sm">Linked to provider ID: {linkedProviderId}</span>}
             </div>
             {linkNote && <div className="text-white/70 text-sm mt-2">{linkNote}</div>}
           </div>
         )}
 
-        {/* Checkout */}
         {showCheckout && (
           <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10 text-white/90">
             <div className="font-semibold mb-2">Checkout</div>
@@ -775,26 +767,20 @@ const Moderation = () => {
 
   const approve = async (claimId: string, providerId: string, claimantUser: string) => {
     setNote("Approving...");
-    // 1) set provider owner + claimed
     const { error: pErr } = await supabase.from("providers").update({ owner_user: claimantUser, claimed: true }).eq("id", providerId);
-
     if (pErr) {
       setNote("Error (provider update): " + pErr.message);
       return;
     }
-
-    // 2) mark claim approved
     const { data: me } = await supabase.auth.getUser();
     const { error: cErr } = await supabase
       .from("provider_claims")
       .update({ status: "approved", decided_at: new Date().toISOString(), decided_by: me?.user?.id ?? null })
       .eq("id", claimId);
-
     if (cErr) {
       setNote("Error (claim update): " + cErr.message);
       return;
     }
-
     setNote("Approved.");
     await loadClaims();
   };
@@ -817,13 +803,9 @@ const Moderation = () => {
   return (
     <Card>
       <SectionTitle>Moderation — Provider Claims</SectionTitle>
-      <p className="text-white/70 mb-3">
-        Approve or reject ownership claims. Approving sets the provider’s owner and marks it as claimed.
-      </p>
+      <p className="text-white/70 mb-3">Approve or reject ownership claims. Approving sets the provider’s owner and marks it as claimed.</p>
       <div className="flex items-center gap-3 mb-3">
-        <Button onClick={loadClaims} variant="outline">
-          {loading ? "Refreshing..." : "Refresh"}
-        </Button>
+        <Button onClick={loadClaims} variant="outline">{loading ? "Refreshing..." : "Refresh"}</Button>
         {note && <span className="text-white/70 text-sm">{note}</span>}
       </div>
 
@@ -844,9 +826,7 @@ const Moderation = () => {
               </div>
               <div className="mt-2 flex gap-2">
                 <Button onClick={() => approve(c.id, c.provider_id, c.claimant_user)}>Approve</Button>
-                <Button variant="outline" onClick={() => reject(c.id)}>
-                  Reject
-                </Button>
+                <Button variant="outline" onClick={() => reject(c.id)}>Reject</Button>
               </div>
             </div>
           ))}
@@ -868,21 +848,11 @@ const Claim = ({ stylist }: { stylist: Stylist | null }) => {
   const submitClaim = async () => {
     setMsg("");
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setMsg("Please log in first (My Profile tab), then come back to claim.");
-        return;
-      }
-      if (!name.trim()) {
-        setMsg("Please enter the Business/Provider name.");
-        return;
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setMsg("Please log in first (My Profile tab), then come back to claim."); return; }
+      if (!name.trim()) { setMsg("Please enter the Business/Provider name."); return; }
 
-      // uses your upsertProvider helper already in this file
       const providerId = await upsertProvider({ name, zip, service: svc });
-
       const { error } = await supabase.from("provider_claims").insert({
         provider_id: providerId,
         claimant_user: user.id,
@@ -902,55 +872,22 @@ const Claim = ({ stylist }: { stylist: Stylist | null }) => {
     <Card>
       <SectionTitle>Claim your service provider profile</SectionTitle>
       <p className="text-white/80 mb-4">
-        Profiles can be claimed by verified owners to respond, dispute, or resolve reviews. We’ll verify ownership via
-        email/phone and proof of business.
+        Profiles can be claimed by verified owners to respond, dispute, or resolve reviews.
+        We’ll verify ownership via email/phone and proof of business.
       </p>
 
       <div className="grid md:grid-cols-2 gap-3">
-        <input
-          placeholder="Business/Provider name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-        />
-        <input
-          placeholder="ZIP code"
-          value={zip}
-          onChange={(e) => setZip(e.target.value)}
-          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-        />
-        <input
-          placeholder="Service (hair, makeup, lashes)"
-          value={svc}
-          onChange={(e) => setSvc(e.target.value)}
-          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
-        />
-
-        <input
-          placeholder="Contact email (for verification)"
-          value={bizEmail}
-          onChange={(e) => setBizEmail(e.target.value)}
-          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
-        />
-        <input
-          placeholder="Phone (optional)"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-        />
-        <input
-          placeholder="Website/Instagram (optional)"
-          value={website}
-          onChange={(e) => setWebsite(e.target.value)}
-          className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-        />
+        <input placeholder="Business/Provider name" value={name} onChange={(e)=>setName(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
+        <input placeholder="ZIP code" value={zip} onChange={(e)=>setZip(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
+        <input placeholder="Service (hair, makeup, lashes)" value={svc} onChange={(e)=>setSvc(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2" />
+        <input placeholder="Contact email (for verification)" value={bizEmail} onChange={(e)=>setBizEmail(e.target.value)} className="px-3 py-2 rounded-xl bg.white/10 text-white placeholder-white/50 md:col-span-2" />
+        <input placeholder="Phone (optional)" value={phone} onChange={(e)=>setPhone(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
+        <input placeholder="Website/Instagram (optional)" value={website} onChange={(e)=>setWebsite(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
       </div>
 
       <div className="mt-4 flex gap-2">
         <Button onClick={submitClaim}>Request verification</Button>
-        <Button variant="outline" onClick={() => alert("We will email you verification steps.")}>
-          What’s needed?
-        </Button>
+        <Button variant="outline" onClick={() => alert('We will email you verification steps.')}>What’s needed?</Button>
       </div>
 
       {msg && <div className="mt-3 text-white/80">{msg}</div>}
@@ -965,25 +902,20 @@ const Account = () => {
   const [user, setUser] = useState<any>(null);
   const [myReviews, setMyReviews] = useState<any[]>([]);
 
-  // helper to load this user's reviews
   const fetchMyReviews = async (userId: string) => {
     const { data, error } = await supabase
       .from("reviews")
       .select("*")
       .eq("author_user", userId)
       .order("created_at", { ascending: false });
-
     if (!error && Array.isArray(data)) setMyReviews(data);
   };
 
-  // on first load, see if a user is already signed in and load their reviews
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
       const currentUser = data.user ?? null;
       setUser(currentUser);
-      if (currentUser) {
-        await fetchMyReviews(currentUser.id);
-      }
+      if (currentUser) await fetchMyReviews(currentUser.id);
     });
   }, []);
 
@@ -991,20 +923,18 @@ const Account = () => {
     const { error } = await supabase.auth.signUp({ email, password });
     setMessage(error ? `Error: ${error.message}` : "Check your email to confirm your account!");
   };
-
   const handleLogin = async () => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setMessage(error ? `Error: ${error.message}` : `Welcome back!`);
     if (data?.user) {
       setUser(data.user);
-      await fetchMyReviews(data.user.id); // <-- fetch after login so the list appears immediately
+      await fetchMyReviews(data.user.id);
     }
   };
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    setMyReviews([]); // <-- clear list on logout
+    setMyReviews([]);
     setMessage("Logged out.");
   };
 
@@ -1014,10 +944,7 @@ const Account = () => {
       {user ? (
         <>
           <p className="text-white/80 mb-3">Signed in as {user.email}</p>
-          <Button variant="outline" onClick={handleLogout}>
-            Log out
-          </Button>
-
+          <Button variant="outline" onClick={handleLogout}>Log out</Button>
           <div className="mt-6">
             <h3 className="text-lg font-semibold text-white mb-2">My Reviews</h3>
             {myReviews.length === 0 && <p className="text-white/60 text-sm">You haven’t posted any reviews yet.</p>}
@@ -1025,9 +952,7 @@ const Account = () => {
               {myReviews.map((review) => (
                 <li key={review.id} className="bg-white/5 p-3 rounded-xl border border-white/10">
                   <p className="text-white/80 text-sm">{review.body}</p>
-                  <p className="text-white/60 text-xs">
-                    Posted on {new Date(review.created_at).toLocaleDateString()}
-                  </p>
+                  <p className="text-white/60 text-xs">Posted on {new Date(review.created_at).toLocaleDateString()}</p>
                 </li>
               ))}
             </ul>
@@ -1036,25 +961,12 @@ const Account = () => {
       ) : (
         <>
           <div className="grid md:grid-cols-2 gap-3">
-            <input
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-            />
-            <input
-              placeholder="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-            />
+            <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
+            <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50" />
           </div>
           <div className="mt-4 flex gap-2">
             <Button onClick={handleSignup}>Create account</Button>
-            <Button variant="outline" onClick={handleLogin}>
-              Log in
-            </Button>
+            <Button variant="outline" onClick={handleLogin}>Log in</Button>
           </div>
         </>
       )}
@@ -1067,34 +979,25 @@ const Account = () => {
 export default function App() {
   const [tab, setTab] = useState("home");
   const [selected, setSelected] = useState<Stylist | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false); // toggle after you add owner role
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  // opens Claim section when "Claim this profile" is clicked
   useEffect(() => {
     const handler = () => setTab("claim");
     window.addEventListener("go-claim", handler as EventListener);
     return () => window.removeEventListener("go-claim", handler as EventListener);
   }, []);
 
-  // show Moderation tab only for admins
   useEffect(() => {
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      const { data, error } = await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle();
-
-      if (!error && data?.is_admin) setIsAdmin(true);
+      const { data } = await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle();
+      if (data?.is_admin) setIsAdmin(true);
     })();
   }, []);
 
-  // redirect the in-app "Moderation" tab to the single /moderation page
   useEffect(() => {
-    if (isAdmin && tab === "moderate") {
-      window.location.href = "/moderation";
-    }
+    if (isAdmin && tab === "moderate") window.location.href = "/moderation";
   }, [tab, isAdmin]);
 
   return (
@@ -1123,7 +1026,13 @@ export default function App() {
               />
             )}
             {tab === "profile" && <Profile stylist={selected} onWrite={() => setTab("review")} />}
-            {tab === "review" && <ReviewForm />}
+            {tab === "review" && (
+              <ReviewForm
+                prefillName={selected?.name}
+                prefillZip={selected?.zip}
+                prefillSvc={selected?.service}
+              />
+            )}
             {tab === "resolve" && <Resolve />}
             {tab === "account" && <Account />}
             {tab === "claim" && <Claim stylist={selected} />}
@@ -1131,15 +1040,12 @@ export default function App() {
               <Card>
                 <SectionTitle>Moderation</SectionTitle>
                 <p className="text-white/70 mb-2">Redirecting to the moderation dashboard…</p>
-                <a href="/moderation" className="underline text-[#00D1B2]">
-                  Open moderation
-                </a>
+                <a href="/moderation" className="underline text-[#00D1B2]">Open moderation</a>
               </Card>
             )}
           </motion.div>
         </AnimatePresence>
 
-        {/* FOOTER + HELP BUTTON */}
         <div className="mt-8 text-white/60 text-xs flex items-center">
           <span>© {new Date().getFullYear()} Whodid It? — Like it or not. All rights reserved.</span>
           <button
