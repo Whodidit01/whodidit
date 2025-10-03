@@ -965,21 +965,24 @@ const Account = () => {
   const [user, setUser] = useState<any>(null);
   const [myReviews, setMyReviews] = useState<any[]>([]);
 
+  // helper to load this user's reviews
+  const fetchMyReviews = async (userId: string) => {
+    const { data, error } = await supabase
+      .from("reviews")
+      .select("*")
+      .eq("author_user", userId)
+      .order("created_at", { ascending: false });
+
+    if (!error && Array.isArray(data)) setMyReviews(data);
+  };
+
+  // on first load, see if a user is already signed in and load their reviews
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
       const currentUser = data.user ?? null;
       setUser(currentUser);
-
       if (currentUser) {
-        const { data: reviews, error } = await supabase
-          .from("reviews")
-          .select("*")
-          .eq("author_user", currentUser.id)
-          .order("created_at", { ascending: false });
-
-        if (!error && Array.isArray(reviews)) {
-          setMyReviews(reviews);
-        }
+        await fetchMyReviews(currentUser.id);
       }
     });
   }, []);
@@ -988,14 +991,20 @@ const Account = () => {
     const { error } = await supabase.auth.signUp({ email, password });
     setMessage(error ? `Error: ${error.message}` : "Check your email to confirm your account!");
   };
+
   const handleLogin = async () => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setMessage(error ? `Error: ${error.message}` : `Welcome back!`);
-    if (data?.user) setUser(data.user);
+    if (data?.user) {
+      setUser(data.user);
+      await fetchMyReviews(data.user.id); // <-- fetch after login so the list appears immediately
+    }
   };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setMyReviews([]); // <-- clear list on logout
     setMessage("Logged out.");
   };
 
@@ -1016,7 +1025,9 @@ const Account = () => {
               {myReviews.map((review) => (
                 <li key={review.id} className="bg-white/5 p-3 rounded-xl border border-white/10">
                   <p className="text-white/80 text-sm">{review.body}</p>
-                  <p className="text-white/60 text-xs">Posted on {new Date(review.created_at).toLocaleDateString()}</p>
+                  <p className="text-white/60 text-xs">
+                    Posted on {new Date(review.created_at).toLocaleDateString()}
+                  </p>
                 </li>
               ))}
             </ul>
