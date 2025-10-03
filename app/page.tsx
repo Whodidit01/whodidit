@@ -221,10 +221,7 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
     (async () => {
       setLoading(true);
       setErr("");
-      const { data, error } = await supabase
-        .from("providers")
-        .select("id,name,zip,service")
-        .limit(100);
+      const { data, error } = await supabase.from("providers").select("id,name,zip,service").limit(100);
       if (error) {
         setErr(error.message);
       } else {
@@ -246,7 +243,7 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
         )
         // Map DB rows into the Stylist shape used by the rest of the UI
         .map((p, idx) => ({
-          id: idx + 1, // local display id
+          id: idx + 1,
           name: p.name,
           service: p.service || "Service",
           zip: p.zip || "—",
@@ -309,6 +306,7 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
     </div>
   );
 };
+
 const Profile = ({ stylist, onWrite }: { stylist: Stylist | null; onWrite: () => void }) => {
   if (!stylist)
     return (
@@ -531,9 +529,7 @@ const ReviewForm = () => {
 
         <div className="md:col-span-2 flex items-center gap-2">
           <input id="anon" type="checkbox" checked={anonymous} onChange={() => setAnonymous(!anonymous)} />
-          <label htmlFor="anon" className="text-white">
-            Post anonymously
-          </label>
+          <label htmlFor="anon" className="text-white">Post anonymously</label>
         </div>
 
         <div className="md:col-span-2 text-white/80 text-sm bg-white/5 p-3 rounded-xl border border-white/10">
@@ -543,15 +539,11 @@ const ReviewForm = () => {
 
         <div className="md:col-span-2 flex items-center gap-2">
           <input id="agree" type="checkbox" checked={agree} onChange={() => setAgree(!agree)} />
-          <label htmlFor="agree" className="text-white">
-            I agree to the terms above.
-          </label>
+          <label htmlFor="agree" className="text-white">I agree to the terms above.</label>
         </div>
 
         <div className="md:col-span-2">
-          <Button onClick={handleSubmit} disabled={!agree}>
-            Submit review
-          </Button>
+          <Button onClick={handleSubmit} disabled={!agree}>Submit review</Button>
         </div>
 
         {msg && <div className="md:col-span-2 text-white/80">{msg}</div>}
@@ -560,18 +552,25 @@ const ReviewForm = () => {
   );
 };
 
+/** =========================
+ *  UPDATED: Resolve (Stripe Checkout redirect)
+ *  ========================= */
 const Resolve = () => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [selectedService, setSelectedService] = useState("Refund");
   const priceFor = (opt: string) => (opt === "Civil suit steps" ? 10.0 : 4.99);
 
-  // NEW — link a stylist profile to this resolve request
+  // Link a stylist profile to this resolve request
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [linkName, setLinkName] = useState("");
   const [linkZip, setLinkZip] = useState("");
   const [linkSvc, setLinkSvc] = useState("");
   const [linkedProviderId, setLinkedProviderId] = useState<string | null>(null);
   const [linkNote, setLinkNote] = useState("");
+
+  // Simple customer fields for Checkout
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
 
   const linkProvider = async () => {
     setLinkNote("");
@@ -589,6 +588,40 @@ const Resolve = () => {
       setLinkNote("Linked! This resolve request is now associated with that profile.");
     } catch (e: any) {
       setLinkNote(`Error linking provider: ${e?.message || e}`);
+    }
+  };
+
+  // NEW: Start Stripe Checkout by calling your /api/checkout route
+  const [paying, setPaying] = useState(false);
+  const startCheckout = async () => {
+    try {
+      setPaying(true);
+      const amountCents = Math.round(priceFor(selectedService) * 100);
+
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountCents,
+          providerId: linkedProviderId,
+          service: selectedService,
+          customerEmail,
+          customerName,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data?.url) {
+        setLinkNote(`Payment error: ${data?.error || res.statusText}`);
+        setPaying(false);
+        return;
+      }
+
+      // Redirect to Stripe's hosted checkout page
+      window.location.href = data.url as string;
+    } catch (err: any) {
+      setLinkNote(`Payment error: ${err?.message || err}`);
+      setPaying(false);
     }
   };
 
@@ -620,49 +653,52 @@ const Resolve = () => {
           <div className="text-white/70 text-sm mt-2">Price: ${priceFor(selectedService).toFixed(2)}</div>
         </div>
 
+        {/* ACTIONS */}
         <div className="md:col-span-2 flex flex-wrap gap-3">
           <Button onClick={() => setShowCheckout(true)}>Help me resolve this</Button>
-          <Button variant="outline" onClick={() => setShowLinkPanel(true)}>
-            Add stylist profile
+          <Button variant="outline" onClick={() => setShowLinkPanel((v) => !v)}>
+            {showLinkPanel ? "Hide stylist link" : "Add stylist profile"}
           </Button>
         </div>
 
+        {/* Link to Stylist Panel */}
         {showLinkPanel && (
-          <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10 text-white/90">
-            <div className="font-semibold mb-2">Link a Stylist to this Request</div>
-            <p className="text-white/70 mb-3">Enter the details of the stylist you want this request associated with.</p>
-
+          <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10">
+            <div className="text-white font-semibold mb-2">Attach a stylist profile</div>
+            <p className="text-white/70 text-sm mb-3">
+              Search by name/ZIP/service. If not found, this will create a profile and link your request to it.
+            </p>
             <div className="grid md:grid-cols-3 gap-3">
               <input
-                placeholder="Stylist/Business Name"
-                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+                placeholder="Stylist/Business name"
                 value={linkName}
                 onChange={(e) => setLinkName(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
               />
               <input
-                placeholder="ZIP code"
-                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+                placeholder="ZIP (optional)"
                 value={linkZip}
                 onChange={(e) => setLinkZip(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
               />
               <input
-                placeholder="Service type"
-                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+                placeholder="Service (optional)"
                 value={linkSvc}
                 onChange={(e) => setLinkSvc(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
               />
             </div>
-
-            <div className="mt-3 flex gap-2">
-              <Button onClick={linkProvider}>Link stylist</Button>
-              <Button variant="outline" onClick={() => setShowLinkPanel(false)}>
-                Cancel
-              </Button>
+            <div className="mt-3 flex items-center gap-2">
+              <Button onClick={linkProvider}>Link provider</Button>
+              {linkedProviderId && (
+                <span className="text-white/70 text-sm">Linked to provider ID: {linkedProviderId}</span>
+              )}
             </div>
-            {linkNote && <div className="mt-2 text-white/70 text-sm">{linkNote}</div>}
+            {linkNote && <div className="text-white/70 text-sm mt-2">{linkNote}</div>}
           </div>
         )}
 
+        {/* Checkout */}
         {showCheckout && (
           <div className="md:col-span-2 bg-white/5 p-4 rounded-xl border border-white/10 text-white/90">
             <div className="font-semibold mb-2">Checkout</div>
@@ -680,18 +716,21 @@ const Resolve = () => {
               <input
                 placeholder="Full name"
                 className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
               />
               <input
                 placeholder="Email for updates"
                 className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
-              />
-              <input
-                placeholder="Card number"
-                className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
+                value={customerEmail}
+                onChange={(e) => setCustomerEmail(e.target.value)}
               />
             </div>
+
             <div className="mt-3 flex gap-2">
-              <Button>Pay ${priceFor(selectedService).toFixed(2)}</Button>
+              <Button onClick={startCheckout} disabled={paying}>
+                {paying ? "Redirecting…" : `Pay $${priceFor(selectedService).toFixed(2)}`}
+              </Button>
               <Button variant="outline" onClick={() => setShowCheckout(false)}>
                 Cancel
               </Button>
@@ -702,8 +741,6 @@ const Resolve = () => {
     </Card>
   );
 };
-
-
 
 const Moderation = () => {
   const [claims, setClaims] = useState<any[]>([]);
@@ -732,17 +769,19 @@ const Moderation = () => {
     setLoading(false);
   };
 
-  useEffect(() => { loadClaims(); }, []);
+  useEffect(() => {
+    loadClaims();
+  }, []);
 
   const approve = async (claimId: string, providerId: string, claimantUser: string) => {
     setNote("Approving...");
     // 1) set provider owner + claimed
-    const { error: pErr } = await supabase
-      .from("providers")
-      .update({ owner_user: claimantUser, claimed: true })
-      .eq("id", providerId);
+    const { error: pErr } = await supabase.from("providers").update({ owner_user: claimantUser, claimed: true }).eq("id", providerId);
 
-    if (pErr) { setNote("Error (provider update): " + pErr.message); return; }
+    if (pErr) {
+      setNote("Error (provider update): " + pErr.message);
+      return;
+    }
 
     // 2) mark claim approved
     const { data: me } = await supabase.auth.getUser();
@@ -751,7 +790,10 @@ const Moderation = () => {
       .update({ status: "approved", decided_at: new Date().toISOString(), decided_by: me?.user?.id ?? null })
       .eq("id", claimId);
 
-    if (cErr) { setNote("Error (claim update): " + cErr.message); return; }
+    if (cErr) {
+      setNote("Error (claim update): " + cErr.message);
+      return;
+    }
 
     setNote("Approved.");
     await loadClaims();
@@ -764,7 +806,10 @@ const Moderation = () => {
       .from("provider_claims")
       .update({ status: "rejected", decided_at: new Date().toISOString(), decided_by: me?.user?.id ?? null })
       .eq("id", claimId);
-    if (error) { setNote("Error: " + error.message); return; }
+    if (error) {
+      setNote("Error: " + error.message);
+      return;
+    }
     setNote("Rejected.");
     await loadClaims();
   };
@@ -772,9 +817,13 @@ const Moderation = () => {
   return (
     <Card>
       <SectionTitle>Moderation — Provider Claims</SectionTitle>
-      <p className="text-white/70 mb-3">Approve or reject ownership claims. Approving sets the provider’s owner and marks it as claimed.</p>
+      <p className="text-white/70 mb-3">
+        Approve or reject ownership claims. Approving sets the provider’s owner and marks it as claimed.
+      </p>
       <div className="flex items-center gap-3 mb-3">
-        <Button onClick={loadClaims} variant="outline">{loading ? "Refreshing..." : "Refresh"}</Button>
+        <Button onClick={loadClaims} variant="outline">
+          {loading ? "Refreshing..." : "Refresh"}
+        </Button>
         {note && <span className="text-white/70 text-sm">{note}</span>}
       </div>
 
@@ -795,7 +844,9 @@ const Moderation = () => {
               </div>
               <div className="mt-2 flex gap-2">
                 <Button onClick={() => approve(c.id, c.provider_id, c.claimant_user)}>Approve</Button>
-                <Button variant="outline" onClick={() => reject(c.id)}>Reject</Button>
+                <Button variant="outline" onClick={() => reject(c.id)}>
+                  Reject
+                </Button>
               </div>
             </div>
           ))}
@@ -817,12 +868,17 @@ const Claim = ({ stylist }: { stylist: Stylist | null }) => {
   const submitClaim = async () => {
     setMsg("");
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         setMsg("Please log in first (My Profile tab), then come back to claim.");
         return;
       }
-      if (!name.trim()) { setMsg("Please enter the Business/Provider name."); return; }
+      if (!name.trim()) {
+        setMsg("Please enter the Business/Provider name.");
+        return;
+      }
 
       // uses your upsertProvider helper already in this file
       const providerId = await upsertProvider({ name, zip, service: svc });
@@ -846,53 +902,53 @@ const Claim = ({ stylist }: { stylist: Stylist | null }) => {
     <Card>
       <SectionTitle>Claim your service provider profile</SectionTitle>
       <p className="text-white/80 mb-4">
-        Profiles can be claimed by verified owners to respond, dispute, or resolve reviews.
-        We’ll verify ownership via email/phone and proof of business.
+        Profiles can be claimed by verified owners to respond, dispute, or resolve reviews. We’ll verify ownership via
+        email/phone and proof of business.
       </p>
 
       <div className="grid md:grid-cols-2 gap-3">
         <input
           placeholder="Business/Provider name"
           value={name}
-          onChange={(e)=>setName(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
         />
         <input
           placeholder="ZIP code"
           value={zip}
-          onChange={(e)=>setZip(e.target.value)}
+          onChange={(e) => setZip(e.target.value)}
           className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
         />
         <input
           placeholder="Service (hair, makeup, lashes)"
           value={svc}
-          onChange={(e)=>setSvc(e.target.value)}
+          onChange={(e) => setSvc(e.target.value)}
           className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
         />
 
         <input
           placeholder="Contact email (for verification)"
           value={bizEmail}
-          onChange={(e)=>setBizEmail(e.target.value)}
+          onChange={(e) => setBizEmail(e.target.value)}
           className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50 md:col-span-2"
         />
         <input
           placeholder="Phone (optional)"
           value={phone}
-          onChange={(e)=>setPhone(e.target.value)}
+          onChange={(e) => setPhone(e.target.value)}
           className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
         />
         <input
           placeholder="Website/Instagram (optional)"
           value={website}
-          onChange={(e)=>setWebsite(e.target.value)}
+          onChange={(e) => setWebsite(e.target.value)}
           className="px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
         />
       </div>
 
       <div className="mt-4 flex gap-2">
         <Button onClick={submitClaim}>Request verification</Button>
-        <Button variant="outline" onClick={() => alert('We will email you verification steps.')}>
+        <Button variant="outline" onClick={() => alert("We will email you verification steps.")}>
           What’s needed?
         </Button>
       </div>
@@ -918,7 +974,7 @@ const Account = () => {
         const { data: reviews, error } = await supabase
           .from("reviews")
           .select("*")
-          .eq("author_user", currentUser.id) // matches insert column
+          .eq("author_user", currentUser.id)
           .order("created_at", { ascending: false });
 
         if (!error && Array.isArray(reviews)) {
@@ -960,9 +1016,7 @@ const Account = () => {
               {myReviews.map((review) => (
                 <li key={review.id} className="bg-white/5 p-3 rounded-xl border border-white/10">
                   <p className="text-white/80 text-sm">{review.body}</p>
-                  <p className="text-white/60 text-xs">
-                    Posted on {new Date(review.created_at).toLocaleDateString()}
-                  </p>
+                  <p className="text-white/60 text-xs">Posted on {new Date(review.created_at).toLocaleDateString()}</p>
                 </li>
               ))}
             </ul>
@@ -1019,23 +1073,20 @@ export default function App() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("is_admin")
-        .eq("id", user.id)
-        .maybeSingle();
+      const { data, error } = await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle();
 
       if (!error && data?.is_admin) setIsAdmin(true);
     })();
   }, []);
-// redirect the in-app "Moderation" tab to the single /moderation page
-useEffect(() => {
-  if (isAdmin && tab === "moderate") {
-    window.location.href = "/moderation";
-  }
-}, [tab, isAdmin]);
 
-    return (
+  // redirect the in-app "Moderation" tab to the single /moderation page
+  useEffect(() => {
+    if (isAdmin && tab === "moderate") {
+      window.location.href = "/moderation";
+    }
+  }, [tab, isAdmin]);
+
+  return (
     <div className="min-h-screen bg-[#0D1117] text-white">
       <div className="max-w-6xl mx-auto px-5 py-6">
         <div className="flex items-center justify-between mb-6">
@@ -1066,21 +1117,20 @@ useEffect(() => {
             {tab === "account" && <Account />}
             {tab === "claim" && <Claim stylist={selected} />}
             {tab === "moderate" && isAdmin && (
-  <Card>
-    <SectionTitle>Moderation</SectionTitle>
-    <p className="text-white/70 mb-2">Redirecting to the moderation dashboard…</p>
-    <a href="/moderation" className="underline text-[#00D1B2]">Open moderation</a>
-  </Card>
-)}
-
+              <Card>
+                <SectionTitle>Moderation</SectionTitle>
+                <p className="text-white/70 mb-2">Redirecting to the moderation dashboard…</p>
+                <a href="/moderation" className="underline text-[#00D1B2]">
+                  Open moderation
+                </a>
+              </Card>
+            )}
           </motion.div>
         </AnimatePresence>
 
         {/* FOOTER + HELP BUTTON */}
         <div className="mt-8 text-white/60 text-xs flex items-center">
-          <span>
-            © {new Date().getFullYear()} Whodid It? — Like it or not. All rights reserved.
-          </span>
+          <span>© {new Date().getFullYear()} Whodid It? — Like it or not. All rights reserved.</span>
           <button
             onClick={() => (window.location.href = "/help")}
             className="ml-4 px-4 py-2 rounded-2xl shadow"
