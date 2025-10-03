@@ -48,8 +48,8 @@ type SectionTitleProps = { children: React.ReactNode };
 type NavProps = { current: string; setCurrent: (id: string) => void; isAdmin: boolean };
 
 type Stylist = {
-  id: number; // local display id
-  providerId?: string; // REAL DB id
+  id: number;
+  providerId?: string; // <-- add this
   name: string;
   service: string;
   zip: string;
@@ -187,7 +187,10 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
     (async () => {
       setLoading(true);
       setErr("");
-      const { data, error } = await supabase.from("providers").select("id,name,zip,service").limit(200);
+      const { data, error } = await supabase
+        .from("providers")
+        .select("id,name,zip,service")
+        .limit(100);
       if (error) {
         setErr(error.message);
       } else {
@@ -201,22 +204,22 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
     () =>
       providers
         .filter((p) => !zip || (p.zip || "").startsWith(zip))
-        .filter(
-          (p) =>
-            !service ||
-            (p.service || "").toLowerCase().includes(service.toLowerCase()) ||
-            (p.name || "").toLowerCase().includes(service.toLowerCase())
+        .filter((p) =>
+          !service
+            ? true
+            : (p.service || "").toLowerCase().includes(service.toLowerCase()) ||
+              (p.name || "").toLowerCase().includes(service.toLowerCase())
         )
         .map((p, idx) => ({
           id: idx + 1,
-          providerId: p.id,
+          providerId: p.id, // <-- real provider id from DB
           name: p.name,
           service: p.service || "Service",
           zip: p.zip || "—",
           pricing: 0,
           serviceScore: 0,
           cleanliness: 0,
-          image: `https://picsum.photos/seed/provider-${p.id}/80/80`, // seed by real id to vary images
+          image: `https://picsum.photos/seed/provider${idx + 1}/80/80`,
         })),
     [providers, zip, service]
   );
@@ -235,7 +238,7 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
           value={service}
           onChange={(e) => setService(e.target.value)}
           placeholder="Service or name"
-          className="w-full mb-3 px-3 py-2 rounded-xl bg.white/10 text-white placeholder-white/50"
+          className="w-full mb-3 px-3 py-2 rounded-xl bg-white/10 text-white placeholder-white/50"
         />
         {loading && <p className="text-white/60 text-sm">Loading…</p>}
         {err && <p className="text-red-300 text-sm">Error: {err}</p>}
@@ -243,7 +246,7 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
 
       <div className="md:col-span-2 grid gap-4">
         {results.map((s, index) => (
-          <Card key={(s.providerId ?? "") + "-" + index}>
+          <Card key={`${s.providerId || "noid"}-${index}`}>
             <div className="flex gap-4 items-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={s.image} alt={s.name} className="rounded-2xl" />
@@ -272,6 +275,7 @@ const Search = ({ onSelect }: { onSelect: (s: Stylist) => void }) => {
     </div>
   );
 };
+
 
 // ---------- Profile (REAL reviews; no faux text) ----------
 const Profile = ({ stylist, onWrite }: { stylist: Stylist | null; onWrite: () => void }) => {
